@@ -501,9 +501,20 @@ def plot_result(
     years = [month / 12 for month in result.months]
     scale = 1_000_000
 
-    fig, ax = plt.subplots(figsize=(15, 8.5))
+    plt.rcParams.update(
+        {
+            "font.size": 15,
+            "axes.titlesize": 20,
+            "axes.labelsize": 17,
+            "xtick.labelsize": 13,
+            "ytick.labelsize": 13,
+            "legend.fontsize": 15,
+        }
+    )
+
+    fig, ax = plt.subplots(figsize=(17, 10))
     if show:
-        fig.subplots_adjust(left=0.07, right=0.69, bottom=0.22, top=0.92)
+        fig.subplots_adjust(left=0.06, right=0.58, bottom=0.22, top=0.92)
     borrowed_line, = ax.plot(
         years,
         [value / scale for value in result.homeowner_net_worth],
@@ -540,45 +551,46 @@ def plot_result(
         plt.close(fig)
         return result
 
-    income_ax = fig.add_axes([0.80, 0.91, 0.15, 0.014])
-    expenses_ax = fig.add_axes([0.80, 0.875, 0.15, 0.014])
-    stock_return_ax = fig.add_axes([0.80, 0.84, 0.15, 0.014])
+    income_ax = fig.add_axes([0.76, 0.925, 0.14, 0.018])
+    expenses_ax = fig.add_axes([0.76, 0.888, 0.14, 0.018])
+    stock_return_ax = fig.add_axes([0.76, 0.851, 0.14, 0.018])
 
-    rent_ax = fig.add_axes([0.80, 0.77, 0.15, 0.014])
-    stock_addition_ax = fig.add_axes([0.80, 0.735, 0.15, 0.014])
-    stock_loan_amount_ax = fig.add_axes([0.80, 0.70, 0.15, 0.014])
-    stock_loan_interest_ax = fig.add_axes([0.80, 0.665, 0.15, 0.014])
+    rent_ax = fig.add_axes([0.76, 0.795, 0.14, 0.018])
+    rent_increase_ax = fig.add_axes([0.76, 0.758, 0.14, 0.018])
+    stock_addition_ax = fig.add_axes([0.76, 0.721, 0.14, 0.018])
+    stock_loan_amount_ax = fig.add_axes([0.76, 0.684, 0.14, 0.018])
+    stock_loan_interest_ax = fig.add_axes([0.76, 0.647, 0.14, 0.018])
 
-    house_price_ax = fig.add_axes([0.80, 0.56, 0.15, 0.014])
-    down_payment_ax = fig.add_axes([0.80, 0.525, 0.15, 0.014])
-    house_appreciation_ax = fig.add_axes([0.80, 0.49, 0.15, 0.014])
-    homeowner_addition_ax = fig.add_axes([0.80, 0.455, 0.15, 0.014])
-    gap_loan_interest_ax = fig.add_axes([0.80, 0.42, 0.15, 0.014])
+    house_price_ax = fig.add_axes([0.76, 0.591, 0.14, 0.018])
+    down_payment_ax = fig.add_axes([0.76, 0.554, 0.14, 0.018])
+    house_appreciation_ax = fig.add_axes([0.76, 0.517, 0.14, 0.018])
+    homeowner_addition_ax = fig.add_axes([0.76, 0.480, 0.14, 0.018])
+    gap_loan_interest_ax = fig.add_axes([0.76, 0.443, 0.14, 0.018])
 
-    interest_ax = fig.add_axes([0.80, 0.335, 0.15, 0.014])
-    payment_ax = fig.add_axes([0.80, 0.30, 0.15, 0.014])
-    term_ax = fig.add_axes([0.80, 0.265, 0.15, 0.014])
-    mode_ax = fig.add_axes([0.74, 0.175, 0.22, 0.07])
+    interest_ax = fig.add_axes([0.76, 0.387, 0.14, 0.018])
+    payment_ax = fig.add_axes([0.76, 0.350, 0.14, 0.018])
+    term_ax = fig.add_axes([0.76, 0.313, 0.14, 0.018])
+    mode_ax = fig.add_axes([0.67, 0.195, 0.24, 0.09])
 
-    fig.text(0.73, 0.945, "SHARED ASSUMPTIONS", fontsize=10, weight="bold")
-    fig.text(0.73, 0.805, "RENTER / INVESTOR", fontsize=10, weight="bold")
-    fig.text(0.73, 0.595, "HOMEOWNER", fontsize=10, weight="bold")
-    fig.text(0.73, 0.375, "MORTGAGE", fontsize=10, weight="bold")
+    fig.text(0.61, 0.955, "SHARED ASSUMPTIONS", fontsize=14, weight="bold")
+    fig.text(0.61, 0.825, "RENTER / INVESTOR", fontsize=14, weight="bold")
+    fig.text(0.61, 0.611, "HOMEOWNER", fontsize=14, weight="bold")
+    fig.text(0.61, 0.407, "MORTGAGE", fontsize=14, weight="bold")
     summary = fig.text(
-        0.73, 0.075, mortgage_summary(result), fontsize=8, wrap=True
+        0.61, 0.08, mortgage_summary(result), fontsize=12, wrap=True
     )
     stock_loan_text = fig.text(
-        0.73,
         0.61,
+        0.627,
         stock_loan_summary(result, config.stock_loan_years),
-        fontsize=7.5,
+        fontsize=11,
     )
     initial_budget_texts = budget_summary(
         result, config.monthly_income, config.monthly_expenses
     )
     budget_texts = [
-        fig.text(x, 0.025, text, fontsize=8.2, linespacing=1.15)
-        for x, text in zip((0.04, 0.27, 0.50), initial_budget_texts)
+        fig.text(x, 0.025, text, fontsize=11.5, linespacing=1.15)
+        for x, text in zip((0.03, 0.27, 0.50), initial_budget_texts)
     ]
 
     income_slider = Slider(
@@ -607,6 +619,16 @@ def plot_result(
         valinit=min(max(config.starting_monthly_rent, 1_000), 50_000),
         valstep=500,
         valfmt="NIS %.0f",
+    )
+
+    rent_increase_slider = Slider(
+        rent_increase_ax,
+        "Rent increase/yr",
+        0.0,
+        10.0,
+        valinit=min(max(config.annual_rent_increase * 100, 0), 10),
+        valstep=0.1,
+        valfmt="%.1f%%",
     )
 
     interest_slider = Slider(
@@ -761,6 +783,7 @@ def plot_result(
                 monthly_income=income_slider.val,
                 monthly_expenses=expenses_slider.val,
                 starting_monthly_rent=rent_slider.val,
+                annual_rent_increase=rent_increase_slider.val / 100,
                 stock_loan_amount=stock_loan_amount_slider.val * 1_000,
                 stock_loan_annual_rate=stock_loan_interest_slider.val / 100,
                 stock_annual_return=stock_return_slider.val / 100,
@@ -830,6 +853,7 @@ def plot_result(
     income_slider.on_changed(redraw)
     expenses_slider.on_changed(redraw)
     rent_slider.on_changed(redraw)
+    rent_increase_slider.on_changed(redraw)
     stock_return_slider.on_changed(redraw)
     homeowner_addition_slider.on_changed(redraw)
     gap_loan_interest_slider.on_changed(redraw)
