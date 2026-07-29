@@ -1,0 +1,23 @@
+{
+  "years": 30,
+  "starting_cash": 100000,
+  "monthly_income": 20000,
+  "monthly_expenses": 8000,
+  "house_price": 1700000,
+  "down_payment": 400000,
+  "house_annual_appreciation": 0.037000000000000005,
+  "mortgage_mode": "payment",
+  "mortgage_monthly_payment": 7500,
+  "mortgage_years": 21.367619057991035,
+  "mortgage_annual_rate": 0.04,
+  "gap_loan_annual_rate": 0.0,
+  "gap_loan_years": 30,
+  "stock_annual_return": 0.08,
+  "stock_monthly_contribution": 2500,
+  "stock_loan_amount": 200000,
+  "stock_loan_annual_rate": 0.045,
+  "stock_loan_years": 30,
+  "homeowner_monthly_contribution": 2600,
+  "starting_monthly_rent": 7500,
+  "annual_rent_increase": 0.02
+}
