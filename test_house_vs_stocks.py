@@ -16,21 +16,14 @@ from house_vs_stocks import (
 class SimulationTests(unittest.TestCase):
     def test_default_tracks_start_at_same_net_worth(self):
         result = simulate(SimulationConfig())
-        self.assertAlmostEqual(result.homeowner_net_worth[0], 100_000)
         self.assertAlmostEqual(result.stock_net_worth[0], 100_000)
-        self.assertAlmostEqual(
-            result.homeowner_with_family_gift_net_worth[0], 400_000
-        )
+        self.assertAlmostEqual(result.homeowner_net_worth[0], 400_000)
 
     def test_default_appreciation_triples_house_and_loans_are_repaid(self):
         result = simulate(SimulationConfig())
         self.assertAlmostEqual(result.house_values[-1], 4_500_000, places=5)
         self.assertAlmostEqual(result.mortgage_balances[-1], 0, places=5)
-        self.assertAlmostEqual(result.gap_loan_balances[-1], 0, places=5)
         self.assertGreater(result.homeowner_net_worth[-1], 4_500_000)
-        self.assertGreater(
-            result.homeowner_with_family_gift_net_worth[-1], 4_500_000
-        )
 
     def test_house_appreciation_changes_final_house_value(self):
         flat = simulate(SimulationConfig(house_annual_appreciation=0))
@@ -38,14 +31,11 @@ class SimulationTests(unittest.TestCase):
         self.assertAlmostEqual(flat.house_values[-1], 1_500_000)
         self.assertGreater(growing.house_values[-1], flat.house_values[-1])
 
-    def test_family_gift_line_excludes_gap_liability(self):
-        result = simulate(SimulationConfig())
-        for borrowed, gifted, gap_balance in zip(
-            result.homeowner_net_worth,
-            result.homeowner_with_family_gift_net_worth,
-            result.gap_loan_balances,
-        ):
-            self.assertAlmostEqual(gifted - borrowed, gap_balance, places=5)
+    def test_family_gift_covers_down_payment_gap(self):
+        result = simulate(
+            SimulationConfig(starting_cash=100_000, down_payment=400_000)
+        )
+        self.assertAlmostEqual(result.family_gift, 300_000)
 
     def test_payment_mode_calculates_payoff_time(self):
         config = SimulationConfig(mortgage_mode="payment")
@@ -129,10 +119,7 @@ class SimulationTests(unittest.TestCase):
         self.assertAlmostEqual(
             result.renter_spendable_cash[1], expected_renter_cash
         )
-        self.assertAlmostEqual(result.homeowner_spendable_cash[1], 2_666.6666667)
-        self.assertAlmostEqual(
-            result.gifted_homeowner_spendable_cash[1], 3_500
-        )
+        self.assertAlmostEqual(result.homeowner_spendable_cash[1], 3_500)
 
     def test_stock_loan_is_invested_and_also_recorded_as_debt(self):
         config = SimulationConfig(stock_loan_amount=200_000)
@@ -161,7 +148,7 @@ class SimulationTests(unittest.TestCase):
         higher = simulate(SimulationConfig(stock_annual_return=0.10))
         self.assertGreater(higher.stock_net_worth[-1], lower.stock_net_worth[-1])
 
-    def test_house_price_and_down_payment_set_both_loans(self):
+    def test_house_price_and_down_payment_set_mortgage_and_gift(self):
         result = simulate(
             SimulationConfig(
                 house_price=2_000_000,
@@ -169,7 +156,7 @@ class SimulationTests(unittest.TestCase):
             )
         )
         self.assertEqual(result.mortgage_balances[0], 1_500_000)
-        self.assertEqual(result.gap_loan_balances[0], 400_000)
+        self.assertEqual(result.family_gift, 400_000)
 
     def test_homeowner_investment_is_added_to_net_worth(self):
         without_investing = simulate(
@@ -183,7 +170,39 @@ class SimulationTests(unittest.TestCase):
             without_investing.homeowner_net_worth[-1],
         )
         self.assertGreater(
-            with_investing.gifted_homeowner_portfolio_values[-1], 0
+            with_investing.homeowner_portfolio_values[-1], 0
+        )
+
+    def test_investor_mirrors_homeowner_house_and_mortgage(self):
+        result = simulate(SimulationConfig())
+        self.assertEqual(result.investor_net_worth[0], result.homeowner_net_worth[0])
+        with_equal_contribution = simulate(
+            SimulationConfig(
+                homeowner_monthly_contribution=1_500,
+                investor_monthly_contribution=1_500,
+            )
+        )
+        self.assertAlmostEqual(
+            with_equal_contribution.investor_net_worth[-1],
+            with_equal_contribution.homeowner_net_worth[-1],
+        )
+
+    def test_investor_contribution_is_capped_by_own_budget(self):
+        result = simulate(
+            SimulationConfig(
+                monthly_income=10_000,
+                monthly_expenses=0,
+                mortgage_monthly_payment=7_500,
+                investor_monthly_contribution=5_000,
+            )
+        )
+        self.assertEqual(result.investor_stock_contributions[1], 2_500)
+
+    def test_higher_investor_contribution_increases_investor_net_worth(self):
+        lower = simulate(SimulationConfig(investor_monthly_contribution=500))
+        higher = simulate(SimulationConfig(investor_monthly_contribution=5_000))
+        self.assertGreater(
+            higher.investor_net_worth[-1], lower.investor_net_worth[-1]
         )
 
     def test_configuration_state_round_trip(self):
@@ -201,21 +220,10 @@ class SimulationTests(unittest.TestCase):
             actual = load_config_state(state_path, SimulationConfig())
         self.assertEqual(actual, expected)
 
-    def test_down_payment_gap_interest_increases_payment(self):
-        free_family_loan = simulate(
-            SimulationConfig(gap_loan_annual_rate=0)
-        )
-        interest_bearing_loan = simulate(
-            SimulationConfig(gap_loan_annual_rate=0.08)
-        )
-        self.assertGreater(
-            interest_bearing_loan.gap_loan_monthly_payment,
-            free_family_loan.gap_loan_monthly_payment,
-        )
-        self.assertLess(
-            interest_bearing_loan.homeowner_spendable_cash[1],
-            free_family_loan.homeowner_spendable_cash[1],
-        )
+    def test_larger_starting_cash_reduces_family_gift(self):
+        small_cash = simulate(SimulationConfig(starting_cash=100_000))
+        large_cash = simulate(SimulationConfig(starting_cash=350_000))
+        self.assertLess(large_cash.family_gift, small_cash.family_gift)
 
     def test_month_zero_through_month_360_are_present(self):
         result = simulate(SimulationConfig())

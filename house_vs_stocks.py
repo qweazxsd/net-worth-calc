@@ -33,17 +33,14 @@ class SimulationConfig:
     mortgage_years: float = 30
     mortgage_annual_rate: float = 0.05
 
-    # The buyer has only starting_cash, so the rest of the down payment is debt.
-    # A 0% default represents an interest-free family/other loan, not free money.
-    gap_loan_annual_rate: float = 0.0
-    gap_loan_years: int = 30
-
     stock_annual_return: float = 0.07
     stock_monthly_contribution: float = 2_500
     stock_loan_amount: float = 200_000
     stock_loan_annual_rate: float = 0.08
     stock_loan_years: int = 30
     homeowner_monthly_contribution: float = 1_000
+    investor_monthly_contribution: float = 1_000
+    investment_property_starting_rent: float = 5_000
     starting_monthly_rent: float = 5_000
     annual_rent_increase: float = 0.02
 
@@ -53,26 +50,26 @@ class SimulationResult:
     months: list[int]
     house_values: list[float]
     mortgage_balances: list[float]
-    gap_loan_balances: list[float]
     homeowner_net_worth: list[float]
-    homeowner_with_family_gift_net_worth: list[float]
     homeowner_portfolio_values: list[float]
-    gifted_homeowner_portfolio_values: list[float]
     homeowner_stock_contributions: list[float]
-    gifted_homeowner_stock_contributions: list[float]
+    investor_net_worth: list[float]
+    investor_portfolio_values: list[float]
+    investor_stock_contributions: list[float]
     stock_net_worth: list[float]
     stock_portfolio_values: list[float]
     stock_loan_balances: list[float]
     rents: list[float]
+    rental_incomes: list[float]
     stock_contributions: list[float]
     renter_spendable_cash: list[float]
     homeowner_spendable_cash: list[float]
-    gifted_homeowner_spendable_cash: list[float]
+    investor_spendable_cash: list[float]
     mortgage_annual_rate: float
     mortgage_monthly_payment: float
     mortgage_payoff_months: float
-    gap_loan_monthly_payment: float
     stock_loan_monthly_payment: float
+    family_gift: float
 
 
 DEFAULT_STATE_PATH = Path(__file__).with_name("house_vs_stocks_state.json")
@@ -153,7 +150,7 @@ def simulate(config: SimulationConfig) -> SimulationResult:
         raise ValueError("Down payment must be lower than the house price.")
     if config.house_annual_appreciation <= -1:
         raise ValueError("Annual house appreciation must be greater than -100%.")
-    if config.years <= 0 or config.gap_loan_years <= 0:
+    if config.years <= 0:
         raise ValueError("Simulation and loan terms must be positive.")
     if config.mortgage_mode not in {"payment", "term"}:
         raise ValueError("Mortgage mode must be 'payment' or 'term'.")
@@ -163,6 +160,10 @@ def simulate(config: SimulationConfig) -> SimulationResult:
         raise ValueError("Monthly stock contribution cannot be negative.")
     if config.homeowner_monthly_contribution < 0:
         raise ValueError("Monthly homeowner contribution cannot be negative.")
+    if config.investor_monthly_contribution < 0:
+        raise ValueError("Monthly investor contribution cannot be negative.")
+    if config.investment_property_starting_rent < 0:
+        raise ValueError("Investment property rent cannot be negative.")
     if config.monthly_income < 0 or config.monthly_expenses < 0:
         raise ValueError("Income and expenses cannot be negative.")
     if config.stock_loan_amount < 0 or config.stock_loan_annual_rate < 0:
@@ -185,10 +186,7 @@ def simulate(config: SimulationConfig) -> SimulationResult:
             mortgage_principal, mortgage_monthly_rate, mortgage_payment
         )
 
-    gap_principal = config.down_payment - config.starting_cash
-    gap_months = config.gap_loan_years * 12
-    gap_monthly_rate = annual_to_monthly_rate(config.gap_loan_annual_rate)
-    gap_payment = annuity_payment(gap_principal, gap_monthly_rate, gap_months)
+    family_gift = config.down_payment - config.starting_cash
 
     house_monthly_growth = annual_to_monthly_rate(
         config.house_annual_appreciation
@@ -207,33 +205,28 @@ def simulate(config: SimulationConfig) -> SimulationResult:
     months = list(range(total_months + 1))
     house_values = [config.house_price]
     mortgage_balances = [mortgage_principal]
-    gap_balances = [gap_principal]
-    homeowner_net_worth = [
-        config.house_price - mortgage_principal - gap_principal
-    ]
-    homeowner_with_family_gift_net_worth = [
-        config.house_price - mortgage_principal
-    ]
+    homeowner_net_worth = [config.house_price - mortgage_principal]
     homeowner_portfolio = 0.0
-    gifted_homeowner_portfolio = 0.0
     homeowner_portfolios = [homeowner_portfolio]
-    gifted_homeowner_portfolios = [gifted_homeowner_portfolio]
     homeowner_stock_contributions = [0.0]
-    gifted_homeowner_stock_contributions = [0.0]
+    investor_net_worth = [config.house_price - mortgage_principal]
+    investor_portfolio = 0.0
+    investor_portfolios = [investor_portfolio]
+    investor_stock_contributions = [0.0]
     portfolio = config.starting_cash + config.stock_loan_amount
     stock_loan_balance = config.stock_loan_amount
     stock_portfolio_values = [portfolio]
     stock_loan_balances = [stock_loan_balance]
     stock_net_worth = [portfolio - stock_loan_balance]
     rents = [config.starting_monthly_rent]
+    rental_incomes = [config.investment_property_starting_rent]
     stock_contributions = [0.0]
     renter_spendable = [0.0]
     homeowner_spendable = [0.0]
-    gifted_homeowner_spendable = [0.0]
+    investor_spendable = [0.0]
 
     house_value = config.house_price
     mortgage_balance = mortgage_principal
-    gap_balance = gap_principal
     for month in range(1, total_months + 1):
         house_value *= 1 + house_monthly_growth
 
@@ -248,14 +241,6 @@ def simulate(config: SimulationConfig) -> SimulationResult:
             mortgage_balance = max(
                 0.0, balance_after_interest - mortgage_payment_this_month
             )
-
-        if month <= gap_months:
-            gap_balance = max(
-                0.0, gap_balance * (1 + gap_monthly_rate) - gap_payment
-            )
-            gap_payment_this_month = gap_payment
-        else:
-            gap_payment_this_month = 0.0
 
         stock_loan_payment_this_month = 0.0
         if stock_loan_balance > 0:
@@ -290,27 +275,36 @@ def simulate(config: SimulationConfig) -> SimulationResult:
             config.monthly_income
             - config.monthly_expenses
             - mortgage_payment_this_month
-            - gap_payment_this_month
-        )
-        gifted_homeowner_cash_before_investing = (
-            config.monthly_income
-            - config.monthly_expenses
-            - mortgage_payment_this_month
         )
         homeowner_contribution = min(
             config.homeowner_monthly_contribution,
             max(0.0, homeowner_cash_before_investing),
         )
-        gifted_homeowner_contribution = min(
-            config.homeowner_monthly_contribution,
-            max(0.0, gifted_homeowner_cash_before_investing),
-        )
         homeowner_cash_to_spend = (
             homeowner_cash_before_investing - homeowner_contribution
         )
-        gifted_homeowner_cash_to_spend = (
-            gifted_homeowner_cash_before_investing
-            - gifted_homeowner_contribution
+
+        # Buys an identical investment property (same price/down payment/
+        # mortgage as the homeowner track) instead of living in it: pays
+        # their own rent, collects a separately configured rent from their
+        # tenant (which may not cover the mortgage or their own rent), and
+        # still owes the mortgage.
+        rental_income = config.investment_property_starting_rent * (
+            (1 + config.annual_rent_increase) ** ((month - 1) // 12)
+        )
+        investor_cash_before_investing = (
+            config.monthly_income
+            - config.monthly_expenses
+            - rent
+            + rental_income
+            - mortgage_payment_this_month
+        )
+        investor_contribution = min(
+            config.investor_monthly_contribution,
+            max(0.0, investor_cash_before_investing),
+        )
+        investor_cash_to_spend = (
+            investor_cash_before_investing - investor_contribution
         )
 
         # Monthly market return, followed by an end-of-month contribution.
@@ -319,61 +313,56 @@ def simulate(config: SimulationConfig) -> SimulationResult:
             homeowner_portfolio * (1 + stock_monthly_return)
             + homeowner_contribution
         )
-        gifted_homeowner_portfolio = (
-            gifted_homeowner_portfolio * (1 + stock_monthly_return)
-            + gifted_homeowner_contribution
+        investor_portfolio = (
+            investor_portfolio * (1 + stock_monthly_return)
+            + investor_contribution
         )
 
         house_values.append(house_value)
         mortgage_balances.append(mortgage_balance)
-        gap_balances.append(gap_balance)
         homeowner_net_worth.append(
-            house_value
-            - mortgage_balance
-            - gap_balance
-            + homeowner_portfolio
-        )
-        homeowner_with_family_gift_net_worth.append(
-            house_value - mortgage_balance + gifted_homeowner_portfolio
+            house_value - mortgage_balance + homeowner_portfolio
         )
         homeowner_portfolios.append(homeowner_portfolio)
-        gifted_homeowner_portfolios.append(gifted_homeowner_portfolio)
         homeowner_stock_contributions.append(homeowner_contribution)
-        gifted_homeowner_stock_contributions.append(
-            gifted_homeowner_contribution
+        investor_net_worth.append(
+            house_value - mortgage_balance + investor_portfolio
         )
+        investor_portfolios.append(investor_portfolio)
+        investor_stock_contributions.append(investor_contribution)
         stock_portfolio_values.append(portfolio)
         stock_loan_balances.append(stock_loan_balance)
         stock_net_worth.append(portfolio - stock_loan_balance)
         rents.append(rent)
+        rental_incomes.append(rental_income)
         stock_contributions.append(stock_contribution)
         renter_spendable.append(renter_cash_to_spend)
         homeowner_spendable.append(homeowner_cash_to_spend)
-        gifted_homeowner_spendable.append(gifted_homeowner_cash_to_spend)
+        investor_spendable.append(investor_cash_to_spend)
 
     return SimulationResult(
         months=months,
         house_values=house_values,
         mortgage_balances=mortgage_balances,
-        gap_loan_balances=gap_balances,
         homeowner_net_worth=homeowner_net_worth,
-        homeowner_with_family_gift_net_worth=homeowner_with_family_gift_net_worth,
         homeowner_portfolio_values=homeowner_portfolios,
-        gifted_homeowner_portfolio_values=gifted_homeowner_portfolios,
         homeowner_stock_contributions=homeowner_stock_contributions,
-        gifted_homeowner_stock_contributions=gifted_homeowner_stock_contributions,
+        investor_net_worth=investor_net_worth,
+        investor_portfolio_values=investor_portfolios,
+        investor_stock_contributions=investor_stock_contributions,
         stock_net_worth=stock_net_worth,
         stock_portfolio_values=stock_portfolio_values,
         stock_loan_balances=stock_loan_balances,
         rents=rents,
+        rental_incomes=rental_incomes,
         stock_contributions=stock_contributions,
         renter_spendable_cash=renter_spendable,
         homeowner_spendable_cash=homeowner_spendable,
-        gifted_homeowner_spendable_cash=gifted_homeowner_spendable,
+        investor_spendable_cash=investor_spendable,
+        family_gift=family_gift,
         mortgage_annual_rate=config.mortgage_annual_rate,
         mortgage_monthly_payment=mortgage_payment,
         mortgage_payoff_months=mortgage_payoff_months,
-        gap_loan_monthly_payment=gap_payment,
         stock_loan_monthly_payment=stock_loan_payment,
     )
 
@@ -387,21 +376,21 @@ def save_csv(result: SimulationResult, output_path: Path) -> None:
                 "year",
                 "house_value",
                 "mortgage_balance",
-                "down_payment_gap_balance",
                 "homeowner_net_worth",
-                "homeowner_with_family_gift_net_worth",
                 "homeowner_stock_portfolio",
-                "gifted_homeowner_stock_portfolio",
                 "homeowner_stock_contribution",
-                "gifted_homeowner_stock_contribution",
+                "investor_net_worth",
+                "investor_stock_portfolio",
+                "investor_stock_contribution",
                 "stock_net_worth",
                 "gross_stock_portfolio",
                 "stock_loan_balance",
                 "monthly_rent",
+                "investment_property_rental_income",
                 "stock_contribution",
                 "renter_spendable_cash",
                 "homeowner_spendable_cash",
-                "gifted_homeowner_spendable_cash",
+                "investor_spendable_cash",
             ]
         )
         for i, month in enumerate(result.months):
@@ -411,21 +400,21 @@ def save_csv(result: SimulationResult, output_path: Path) -> None:
                     month / 12,
                     result.house_values[i],
                     result.mortgage_balances[i],
-                    result.gap_loan_balances[i],
                     result.homeowner_net_worth[i],
-                    result.homeowner_with_family_gift_net_worth[i],
                     result.homeowner_portfolio_values[i],
-                    result.gifted_homeowner_portfolio_values[i],
                     result.homeowner_stock_contributions[i],
-                    result.gifted_homeowner_stock_contributions[i],
+                    result.investor_net_worth[i],
+                    result.investor_portfolio_values[i],
+                    result.investor_stock_contributions[i],
                     result.stock_net_worth[i],
                     result.stock_portfolio_values[i],
                     result.stock_loan_balances[i],
                     result.rents[i],
+                    result.rental_incomes[i],
                     result.stock_contributions[i],
                     result.renter_spendable_cash[i],
                     result.homeowner_spendable_cash[i],
-                    result.gifted_homeowner_spendable_cash[i],
+                    result.investor_spendable_cash[i],
                 ]
             )
 
@@ -451,34 +440,33 @@ def budget_summary(
     mortgage_payment = (
         monthly_income
         - monthly_expenses
-        - result.gifted_homeowner_stock_contributions[month]
-        - result.gifted_homeowner_spendable_cash[month]
+        - result.homeowner_stock_contributions[month]
+        - result.homeowner_spendable_cash[month]
     )
-    down_payment_gap = result.gap_loan_balances[0]
     stocks = (
         "STOCKS\n"
-        f"Total income NIS {monthly_income:,.0f} - expenses NIS {monthly_expenses:,.0f}\n"
-        f"- rent NIS {result.rents[month]:,.0f} - pay on loan "
-        f"NIS {result.stock_loan_monthly_payment:,.0f}\n"
-        f"- invested NIS {result.stock_contributions[month]:,.0f} "
-        f"= cash to spend NIS {result.renter_spendable_cash[month]:,.0f}"
+        f"Income {monthly_income:,.0f} - exp {monthly_expenses:,.0f}\n"
+        f"- rent {result.rents[month]:,.0f} - loan pmt "
+        f"{result.stock_loan_monthly_payment:,.0f}\n"
+        f"- invest {result.stock_contributions[month]:,.0f} "
+        f"= spend {result.renter_spendable_cash[month]:,.0f}"
     )
-    borrowed_house = (
-        f"HOUSE - BORROWED NIS {down_payment_gap:,.0f}\n"
-        f"Total income NIS {monthly_income:,.0f} - expenses NIS {monthly_expenses:,.0f}\n"
-        f"- pay on house NIS {mortgage_payment:,.0f} "
-        f"- pay on loan NIS {result.gap_loan_monthly_payment:,.0f}\n"
-        f"- invested NIS {result.homeowner_stock_contributions[month]:,.0f} "
-        f"= cash to spend NIS {result.homeowner_spendable_cash[month]:,.0f}"
+    house = (
+        f"HOUSE - {result.family_gift:,.0f} GIFT\n"
+        f"Income {monthly_income:,.0f} - exp {monthly_expenses:,.0f}\n"
+        f"- mortgage {mortgage_payment:,.0f}\n"
+        f"- invest {result.homeowner_stock_contributions[month]:,.0f} "
+        f"= spend {result.homeowner_spendable_cash[month]:,.0f}"
     )
-    gifted_house = (
-        f"HOUSE - NIS {down_payment_gap:,.0f} FAMILY GIFT\n"
-        f"Total income NIS {monthly_income:,.0f} - expenses NIS {monthly_expenses:,.0f}\n"
-        f"- pay on house NIS {mortgage_payment:,.0f} - pay on loans NIS 0\n"
-        f"- invested NIS {result.gifted_homeowner_stock_contributions[month]:,.0f} "
-        f"= cash to spend NIS {result.gifted_homeowner_spendable_cash[month]:,.0f}"
+    investor = (
+        f"INVESTMENT PROP. - {result.family_gift:,.0f} GIFT\n"
+        f"Income {monthly_income:,.0f} - exp {monthly_expenses:,.0f}\n"
+        f"- own rent {result.rents[month]:,.0f} + rent income "
+        f"{result.rental_incomes[month]:,.0f} - mortgage {mortgage_payment:,.0f}\n"
+        f"- invest {result.investor_stock_contributions[month]:,.0f} "
+        f"= spend {result.investor_spendable_cash[month]:,.0f}"
     )
-    return stocks, borrowed_house, gifted_house
+    return stocks, house, investor
 
 
 def stock_loan_summary(result: SimulationResult, years: int) -> str:
@@ -512,23 +500,13 @@ def plot_result(
         }
     )
 
-    fig, ax = plt.subplots(figsize=(17, 10))
+    fig, ax = plt.subplots(figsize=(17, 15))
     if show:
         fig.subplots_adjust(left=0.06, right=0.58, bottom=0.22, top=0.92)
-    borrowed_line, = ax.plot(
+    homeowner_line, = ax.plot(
         years,
         [value / scale for value in result.homeowner_net_worth],
         linewidth=2.5,
-        label="Buy house: borrow missing down payment",
-    )
-    gift_line, = ax.plot(
-        years,
-        [
-            value / scale
-            for value in result.homeowner_with_family_gift_net_worth
-        ],
-        linewidth=2.5,
-        linestyle="--",
         label="Buy house: family gift for missing down payment",
     )
     stock_line, = ax.plot(
@@ -536,6 +514,13 @@ def plot_result(
         [value / scale for value in result.stock_net_worth],
         linewidth=2.5,
         label="Rent + invest: net worth",
+    )
+    investor_line, = ax.plot(
+        years,
+        [value / scale for value in result.investor_net_worth],
+        linewidth=2.5,
+        linestyle="--",
+        label="Buy investment property + rent own home",
     )
     ax.axhline(0, color="black", linewidth=0.8)
     ax.set(
@@ -554,34 +539,37 @@ def plot_result(
     income_ax = fig.add_axes([0.76, 0.925, 0.14, 0.018])
     expenses_ax = fig.add_axes([0.76, 0.888, 0.14, 0.018])
     stock_return_ax = fig.add_axes([0.76, 0.851, 0.14, 0.018])
+    starting_cash_ax = fig.add_axes([0.76, 0.814, 0.14, 0.018])
 
-    rent_ax = fig.add_axes([0.76, 0.795, 0.14, 0.018])
-    rent_increase_ax = fig.add_axes([0.76, 0.758, 0.14, 0.018])
-    stock_addition_ax = fig.add_axes([0.76, 0.721, 0.14, 0.018])
-    stock_loan_amount_ax = fig.add_axes([0.76, 0.684, 0.14, 0.018])
-    stock_loan_interest_ax = fig.add_axes([0.76, 0.647, 0.14, 0.018])
+    rent_ax = fig.add_axes([0.76, 0.758, 0.14, 0.018])
+    rent_increase_ax = fig.add_axes([0.76, 0.721, 0.14, 0.018])
+    stock_addition_ax = fig.add_axes([0.76, 0.684, 0.14, 0.018])
+    stock_loan_amount_ax = fig.add_axes([0.76, 0.647, 0.14, 0.018])
+    stock_loan_interest_ax = fig.add_axes([0.76, 0.610, 0.14, 0.018])
 
-    house_price_ax = fig.add_axes([0.76, 0.591, 0.14, 0.018])
-    down_payment_ax = fig.add_axes([0.76, 0.554, 0.14, 0.018])
-    house_appreciation_ax = fig.add_axes([0.76, 0.517, 0.14, 0.018])
-    homeowner_addition_ax = fig.add_axes([0.76, 0.480, 0.14, 0.018])
-    gap_loan_interest_ax = fig.add_axes([0.76, 0.443, 0.14, 0.018])
+    house_price_ax = fig.add_axes([0.76, 0.509, 0.14, 0.018])
+    down_payment_ax = fig.add_axes([0.76, 0.472, 0.14, 0.018])
+    house_appreciation_ax = fig.add_axes([0.76, 0.435, 0.14, 0.018])
+    homeowner_addition_ax = fig.add_axes([0.76, 0.398, 0.14, 0.018])
 
-    interest_ax = fig.add_axes([0.76, 0.387, 0.14, 0.018])
-    payment_ax = fig.add_axes([0.76, 0.350, 0.14, 0.018])
-    term_ax = fig.add_axes([0.76, 0.313, 0.14, 0.018])
-    mode_ax = fig.add_axes([0.67, 0.195, 0.24, 0.09])
+    interest_ax = fig.add_axes([0.76, 0.342, 0.14, 0.018])
+    payment_ax = fig.add_axes([0.76, 0.305, 0.14, 0.018])
+    term_ax = fig.add_axes([0.76, 0.268, 0.14, 0.018])
+    investor_addition_ax = fig.add_axes([0.76, 0.212, 0.14, 0.018])
+    rental_income_ax = fig.add_axes([0.76, 0.175, 0.14, 0.018])
+    mode_ax = fig.add_axes([0.67, 0.075, 0.24, 0.075])
 
     fig.text(0.61, 0.955, "SHARED ASSUMPTIONS", fontsize=14, weight="bold")
-    fig.text(0.61, 0.825, "RENTER / INVESTOR", fontsize=14, weight="bold")
-    fig.text(0.61, 0.611, "HOMEOWNER", fontsize=14, weight="bold")
-    fig.text(0.61, 0.407, "MORTGAGE", fontsize=14, weight="bold")
+    fig.text(0.61, 0.788, "RENTER / INVESTOR", fontsize=14, weight="bold")
+    fig.text(0.61, 0.529, "HOMEOWNER", fontsize=14, weight="bold")
+    fig.text(0.61, 0.362, "MORTGAGE", fontsize=14, weight="bold")
+    fig.text(0.61, 0.232, "INVESTMENT PROPERTY", fontsize=14, weight="bold")
     summary = fig.text(
-        0.61, 0.08, mortgage_summary(result), fontsize=12, wrap=True
+        0.61, 0.03, mortgage_summary(result), fontsize=10, wrap=True
     )
     stock_loan_text = fig.text(
         0.61,
-        0.627,
+        0.560,
         stock_loan_summary(result, config.stock_loan_years),
         fontsize=11,
     )
@@ -589,8 +577,8 @@ def plot_result(
         result, config.monthly_income, config.monthly_expenses
     )
     budget_texts = [
-        fig.text(x, 0.025, text, fontsize=11.5, linespacing=1.15)
-        for x, text in zip((0.03, 0.27, 0.50), initial_budget_texts)
+        fig.text(x, 0.015, text, fontsize=9.5, linespacing=1.1)
+        for x, text in zip((0.01, 0.185, 0.36), initial_budget_texts)
     ]
 
     income_slider = Slider(
@@ -610,6 +598,15 @@ def plot_result(
         valinit=min(max(config.monthly_expenses, 1_000), 100_000),
         valstep=500,
         valfmt="NIS %.0f",
+    )
+    starting_cash_slider = Slider(
+        starting_cash_ax,
+        "Starting cash",
+        0,
+        5_000,
+        valinit=min(max(config.starting_cash / 1_000, 0), 5_000),
+        valstep=50,
+        valfmt="NIS %.0fK",
     )
     rent_slider = Slider(
         rent_ax,
@@ -692,14 +689,25 @@ def plot_result(
         valstep=100,
         valfmt="NIS %.0f",
     )
-    gap_loan_interest_slider = Slider(
-        gap_loan_interest_ax,
-        "Down-pay loan rate",
+    investor_addition_slider = Slider(
+        investor_addition_ax,
+        "Investor stock addition",
         0,
-        20,
-        valinit=min(max(config.gap_loan_annual_rate * 100, 0), 20),
-        valstep=0.1,
-        valfmt="%.1f%%",
+        100_000,
+        valinit=min(max(config.investor_monthly_contribution, 0), 100_000),
+        valstep=100,
+        valfmt="NIS %.0f",
+    )
+    rental_income_slider = Slider(
+        rental_income_ax,
+        "Rental income",
+        0,
+        50_000,
+        valinit=min(
+            max(config.investment_property_starting_rent, 0), 50_000
+        ),
+        valstep=500,
+        valfmt="NIS %.0f",
     )
     stock_return_slider = Slider(
         stock_return_ax,
@@ -773,6 +781,13 @@ def plot_result(
             return
         state["updating"] = True
         try:
+            down_payment_value = min(
+                down_payment_slider.val * 1_000,
+                house_price_slider.val * 1_000 - 50_000,
+            )
+            starting_cash_value = min(
+                starting_cash_slider.val * 1_000, down_payment_value
+            )
             updated_config = replace(
                 config,
                 mortgage_mode=state["mode"],
@@ -789,16 +804,19 @@ def plot_result(
                 stock_annual_return=stock_return_slider.val / 100,
                 house_annual_appreciation=house_appreciation_slider.val / 100,
                 house_price=house_price_slider.val * 1_000,
-                down_payment=min(
-                    down_payment_slider.val * 1_000,
-                    house_price_slider.val * 1_000 - 50_000,
-                ),
+                down_payment=down_payment_value,
                 homeowner_monthly_contribution=homeowner_addition_slider.val,
-                gap_loan_annual_rate=gap_loan_interest_slider.val / 100,
+                investor_monthly_contribution=investor_addition_slider.val,
+                investment_property_starting_rent=rental_income_slider.val,
+                starting_cash=starting_cash_value,
             )
             if down_payment_slider.val * 1_000 != updated_config.down_payment:
                 down_payment_slider.set_val(
                     updated_config.down_payment / 1_000
+                )
+            if starting_cash_slider.val * 1_000 != updated_config.starting_cash:
+                starting_cash_slider.set_val(
+                    updated_config.starting_cash / 1_000
                 )
             updated = simulate(updated_config)
             state["result"] = updated
@@ -813,17 +831,14 @@ def plot_result(
                     min(max(updated.mortgage_monthly_payment, 3_000), 30_000)
                 )
 
-            borrowed_line.set_ydata(
+            homeowner_line.set_ydata(
                 [value / scale for value in updated.homeowner_net_worth]
-            )
-            gift_line.set_ydata(
-                [
-                    value / scale
-                    for value in updated.homeowner_with_family_gift_net_worth
-                ]
             )
             stock_line.set_ydata(
                 [value / scale for value in updated.stock_net_worth]
+            )
+            investor_line.set_ydata(
+                [value / scale for value in updated.investor_net_worth]
             )
             summary.set_text(mortgage_summary(updated))
             updated_budget_texts = budget_summary(
@@ -856,7 +871,9 @@ def plot_result(
     rent_increase_slider.on_changed(redraw)
     stock_return_slider.on_changed(redraw)
     homeowner_addition_slider.on_changed(redraw)
-    gap_loan_interest_slider.on_changed(redraw)
+    investor_addition_slider.on_changed(redraw)
+    rental_income_slider.on_changed(redraw)
+    starting_cash_slider.on_changed(redraw)
     house_price_slider.on_changed(redraw)
     down_payment_slider.on_changed(redraw)
     stock_loan_amount_slider.on_changed(redraw)
@@ -906,14 +923,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--mortgage-payment", type=float, default=7_500)
     parser.add_argument("--mortgage-years", type=float, default=30)
     parser.add_argument("--mortgage-rate", type=float, default=0.05)
-    parser.add_argument("--gap-loan-rate", type=float, default=0.0)
-    parser.add_argument("--gap-loan-years", type=int, default=30)
     parser.add_argument("--stock-return", type=float, default=0.07)
     parser.add_argument("--stock-monthly-addition", type=float, default=2_500)
     parser.add_argument("--stock-loan-amount", type=float, default=200_000)
     parser.add_argument("--stock-loan-rate", type=float, default=0.08)
     parser.add_argument("--stock-loan-years", type=int, default=30)
     parser.add_argument("--homeowner-monthly-addition", type=float, default=1_000)
+    parser.add_argument("--investor-monthly-addition", type=float, default=1_000)
+    parser.add_argument(
+        "--investment-property-rent", type=float, default=5_000
+    )
     parser.add_argument("--starting-rent", type=float, default=5_000)
     parser.add_argument("--rent-increase", type=float, default=0.02)
     parser.add_argument("--output", type=Path, default=Path("comparison.png"))
@@ -949,14 +968,14 @@ def main() -> None:
         mortgage_monthly_payment=args.mortgage_payment,
         mortgage_years=args.mortgage_years,
         mortgage_annual_rate=args.mortgage_rate,
-        gap_loan_annual_rate=args.gap_loan_rate,
-        gap_loan_years=args.gap_loan_years,
         stock_annual_return=args.stock_return,
         stock_monthly_contribution=args.stock_monthly_addition,
         stock_loan_amount=args.stock_loan_amount,
         stock_loan_annual_rate=args.stock_loan_rate,
         stock_loan_years=args.stock_loan_years,
         homeowner_monthly_contribution=args.homeowner_monthly_addition,
+        investor_monthly_contribution=args.investor_monthly_addition,
+        investment_property_starting_rent=args.investment_property_rent,
         starting_monthly_rent=args.starting_rent,
         annual_rent_increase=args.rent_increase,
     )
@@ -975,15 +994,9 @@ def main() -> None:
     print(mortgage_summary(result))
     print(f"Stock addition: NIS {result.stock_contributions[-1]:,.0f}/month")
     print(stock_loan_summary(result, config.stock_loan_years))
-    print(
-        "Down-payment gap payment: "
-        f"NIS {result.gap_loan_monthly_payment:,.2f}/month"
-    )
+    print(f"Family gift: NIS {result.family_gift:,.2f}")
     print(f"Final homeowner net worth: NIS {result.homeowner_net_worth[-1]:,.0f}")
-    print(
-        "Final homeowner net worth with family gift: "
-        f"NIS {result.homeowner_with_family_gift_net_worth[-1]:,.0f}"
-    )
+    print(f"Final investor net worth: NIS {result.investor_net_worth[-1]:,.0f}")
     print(f"Final stock net worth: NIS {result.stock_net_worth[-1]:,.0f}")
     print(f"Saved graph to {args.output.resolve()}")
     print(f"Saved monthly data to {args.csv.resolve()}")

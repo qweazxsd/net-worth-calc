@@ -2,16 +2,19 @@
 
 This monthly simulation compares:
 
-- buying a NIS 1.5M home with a NIS 400K down payment and a fixed
-  NIS 7,500 mortgage payment, when the missing NIS 300K is borrowed;
-- buying the same home when the missing NIS 300K is a free family gift; and
-- investing NIS 100K with an independently selected monthly contribution,
-  while separately tracking rent.
+- buying a NIS 1.5M home with a NIS 100K starting cash, a NIS 300K family
+  gift covering the rest of the NIS 400K down payment, and a fixed NIS 7,500
+  mortgage payment;
+- investing the same NIS 100K with an independently selected monthly
+  contribution, while separately tracking rent; and
+- buying an identical NIS 1.5M investment property (same down payment,
+  gift, and mortgage as the homeowner) while still renting your own home:
+  you pay your own rent and collect the same rent from a tenant, so the two
+  cancel out, leaving the same mortgage payment as the homeowner track.
 
-The NIS 300K missing from the buyer's down payment is represented as a real
-liability. By default it is a 0% loan paid over 30 years. Change
-`--gap-loan-rate` if that money has a cost. The separate family-gift graph
-line has no liability and no repayment for that NIS 300K.
+The family gift covers whatever part of the down payment isn't covered by
+the buyer's own starting cash. It is never owed back, so it isn't a
+liability anywhere in the model.
 
 ## Run
 
@@ -37,9 +40,10 @@ The family-budget controls calculate the cash remaining each month:
 
 - renter/investor: income minus expenses, rent, and the actual stock
   contribution;
-- homeowner: income minus expenses, mortgage, and the borrowed-down-payment
-  payment;
-- homeowner with family gift: income minus expenses and mortgage.
+- homeowner: income minus expenses and the mortgage payment;
+- investment property: income minus expenses, minus the same mortgage
+  payment as the homeowner, plus rental income, minus the rent you pay for
+  your own home (the two rent terms use the same figure, so they cancel).
 
 The stock-addition slider selects the desired investment. The program caps
 the actual contribution at the renter's available cash after rent and
@@ -74,19 +78,28 @@ price and NIS 400K bank requirement. The mortgage principal is always:
 house price - required down payment
 ```
 
-The gap between the required down payment and the family's starting NIS 100K
-is recalculated as either a loan or a family gift.
+The **Starting cash** slider sets how much of the required down payment the
+buyer covers themselves; it also seeds the renter/investor's initial stock
+portfolio, since it's the same pool of cash either way. The family gift is
+always calculated automatically as:
 
-The **Owner investment** slider lets both homeowner tracks invest monthly in
-the same stock portfolio return used by the renter. Each track's actual
-investment is capped by its own available monthly cash. The investment
-portfolio is included in that homeowner's net worth, and the bottom equations
-show the investment before calculating cash to spend.
+```text
+family gift = required down payment - starting cash
+```
 
-The **Down-pay loan rate** slider controls the effective annual interest on
-the money borrowed to complete the required down payment. It uses a 30-year
-Spitzer schedule. Setting it to 0% represents an interest-free family loan;
-this is different from the family-gift track, where the money is never owed.
+Starting cash is capped at the current down payment, since the gift can't be
+negative.
+
+The **Owner investment** slider lets the homeowner invest monthly in the same
+stock portfolio return used by the renter. The actual investment is capped
+by the homeowner's own available monthly cash. The investment portfolio is
+included in the homeowner's net worth, and the bottom equations show the
+investment before calculating cash to spend.
+
+The **Investor stock addition** slider does the same for the investment
+property track, using its own available monthly cash (which, since rent
+paid and rent collected cancel, works out to the same starting cash flow as
+the homeowner track before either one invests).
 
 ## Saved slider state
 
@@ -117,6 +130,7 @@ Important defaults:
 - stock return: 7% effective annually, compounded monthly;
 - stock contribution: NIS 2,500/month;
 - homeowner stock contribution: NIS 1,000/month;
+- investor stock contribution: NIS 1,000/month;
 - stock portfolio loan: NIS 200,000 at 8% effective annual interest for
   30 years;
 - household income: NIS 20,000/month;
